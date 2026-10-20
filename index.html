@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Liquid Physics Laboratory — Stabil Version</title>
+  <style>
+    :root {
+      --bg: #060911;
+      --panel: rgba(13, 19, 33, 0.88);
+      --border: rgba(148, 163, 184, 0.2);
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; user-select: none; }
+    body { background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; width: 100vw; }
+    #canvas-container { width: 100%; height: 100%; position: absolute; inset: 0; }
+
+    /* Vänster kontrollpanel */
+    .hud-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 345px;
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      z-index: 10;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+    }
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hud-header h1 { font-size: 0.98rem; font-weight: 700; color: var(--accent); }
+    .badge {
+      font-size: 0.68rem;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      padding: 3px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      font-family: ui-monospace, monospace;
+    }
+
+    .section-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 10px 0 6px;
+      font-weight: 600;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+
+    button {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 7px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.76rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    button:hover { background: rgba(56, 189, 248, 0.22); border-color: var(--accent); }
+    button.active { background: var(--accent); color: #060911; font-weight: 700; border-color: var(--accent); }
+
+    .control-group { margin-bottom: 11px; }
+    .control-header { display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 4px; color: #cbd5e1; }
+    .control-val { color: var(--accent); font-family: ui-monospace, monospace; font-weight: 600; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 5px; }
+
+    .action-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .action-btn {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.45);
+      color: #e0f2fe;
+      font-weight: 600;
+      padding: 9px;
+    }
+    .action-btn:hover { background: var(--accent); color: #060911; }
+
+    /* Höger panel: Kraftvektorer & Realtidsgraf */
+    .right-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 265px;
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 15px;
+      z-index: 10;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+    }
+    .legend-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.75rem; color: #cbd5e1; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .grad-bar {
+      height: 8px;
+      width: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #1d4ed8, #06b6d4, #10b981, #f59e0b, #ffffff);
+      margin: 6px 0 3px;
+    }
+    .grad-labels { display: flex; justify-content: space-between; font-size: 0.66rem; color: var(--muted); font-family: ui-monospace, monospace; }
+    #scope-canvas {
+      width: 100%;
+      height: 76px;
+      background: rgba(6, 9, 17, 0.78);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      margin-top: 6px;
+      display: block;
+    }
+    .hint-box {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 0.71rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* Telemetri-kort nere */
+    .telemetry {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 10px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .metric-card {
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+    .metric-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-size: 1.15rem; font-weight: 700; font-family: ui-monospace, monospace; color: var(--accent); margin-top: 2px; }
+    .metric-sub { font-size: 0.68rem; color: var(--muted); font-family: ui-monospace, monospace; margin-top: 2px; }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Kontrollpanel -->
+  <div class="hud-panel">
+    <div class="hud-header">
+      <h1>3D Liquid Physics Lab</h1>
+      <span class="badge">CFL-Stabil SPH</span>
+    </div>
+
+    <div class="section-title">Vätske-presets</div>
+    <div class="grid-2">
+      <button id="preset-water" class="active" onclick="applyPreset('water')">Vatten (20 °C)</button>
+      <button id="preset-glycerol" onclick="applyPreset('glycerol')">Glycerol / Olja</button>
+      <button id="preset-honey" onclick="applyPreset('honey')">Honung</button>
+      <button id="preset-mercury" onclick="applyPreset('mercury')">Kvicksilver</button>
+    </div>
+
+    <div class="section-title">Visualiseringsläge</div>
+    <div class="grid-3">
+      <button id="view-both" class="active" onclick="setViewMode('both')">Yta + SPH</button>
+      <button id="view-sph" onclick="setViewMode('sph')">Endast SPH</button>
+      <button id="view-surface" onclick="setViewMode('surface')">Endast Yta</button>
+    </div>
+
+    <div class="control-group">
+      <div class="control-header">
+        <span>Vätskans densitet (ρ<sub>0</sub>)</span>
+        <span class="control-val" id="lbl-rho">1000 kg/m³</span>
+      </div>
+      <input id="inp-rho" type="range" min="500" max="13600" step="50" value="1000" />
+    </div>
+
+    <div class="control-group">
+      <div class="control-header">
+        <span>Dynamisk viskositet (μ)</span>
+        <span class="control-val" id="lbl-mu">0.0010 Pa·s</span>
+      </div>
+      <input id="inp-mu" type="range" min="-3" max="1.15" step="0.02" value="-3" />
+    </div>
+
+    <div class="control-group">
+      <div class="control-header">
+        <span>Ytspänning (σ)</span>
+        <span class="control-val" id="lbl-sigma">72.8 mN/m</span>
+      </div>
+      <input id="inp-sigma" type="range" min="10" max="500" step="1" value="72.8" />
+    </div>
+
+    <div class="control-group">
+      <div class="control-header">
+        <span>Testsfärens densitet (ρ<sub>s</sub>)</span>
+        <span class="control-val" id="lbl-obj-rho">750 kg/m³</span>
+      </div>
+      <input id="inp-obj-rho" type="range" min="200" max="8000" step="50" value="750" />
+    </div>
+
+    <div class="action-bar">
+      <button class="action-btn" onclick="triggerDamBreak()">Skvalpa Tank</button>
+      <button class="action-btn" onclick="dropTestSphere()">Släpp Sfär</button>
+    </div>
+  </div>
+
+  <!-- Höger panel: Kraftvektorer & Realtids-oscilloskop -->
+  <div class="right-panel">
+    <div class="section-title" style="margin-top:0;">Kraftvektorer på Sfär</div>
+    <div class="legend-row"><span class="dot" style="background:#22c55e;"></span><span>Flytkraft <b>F<sub>B</sub></b> = ρ<sub>0</sub> V<sub>sub</sub> g</span></div>
+    <div class="legend-row"><span class="dot" style="background:#ef4444;"></span><span>Tyngdkraft <b>W</b> = m<sub>s</sub> g</span></div>
+    <div class="legend-row"><span class="dot" style="background:#a855f7;"></span><span>Visköst motstånd <b>F<sub>D</sub></b></span></div>
+
+    <div class="section-title" style="margin-top:12px;">SPH Partikelhastighet |<b>u</b>|</div>
+    <div class="grad-bar"></div>
+    <div class="grad-labels"><span>0.0 m/s</span><span>1.2 m/s</span><span>2.5+ m/s</span></div>
+
+    <div class="section-title" style="margin-top:12px;">Sfär (Guld) & Våghöjd (Blå)</div>
+    <canvas id="scope-canvas" width="235" height="76"></canvas>
+
+    <div class="hint-box">
+      💡 <b>Klicka</b> på vattenytan (den blå ringen) för att skapa en våg. <b>Håll inne och dra</b> för att rotera 3D-tanken.
+    </div>
+  </div>
+
+  <!-- Telemetri-kort -->
+  <div class="telemetry">
+    <div class="metric-card">
+      <div class="metric-label">Reynolds Tal (Re)</div>
+      <div class="metric-value" id="tel-re">250 000</div>
+      <div class="metric-sub" id="tel-regime">Inertiellt / Svagt dämpat</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Hydrostatiskt Bottentryck</div>
+      <div class="metric-value" id="tel-pressure">16.2 kPa</div>
+      <div class="metric-sub">P = ρ<sub>0</sub> g H<sub>0</sub> (H<sub>0</sub> = 1.65 m)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Sfär Nedsänkt Andel</div>
+      <div class="metric-value" id="tel-sub">75.0 %</div>
+      <div class="metric-sub" id="tel-forces">F_B: 1.21 kN | W: 1.21 kN</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Kapillärlängd (l<sub>c</sub>)</div>
+      <div class="metric-value" id="tel-lc">2.72 mm</div>
+      <div class="metric-sub">l<sub>c</sub> = √(σ / ρ<sub>0</sub>g)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Kinematisk Viskositet (ν)</div>
+      <div class="metric-value" id="tel-nu">1.00 mm²/s</div>
+      <div class="metric-sub">ν = μ / ρ<sub>0</sub></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // =========================================================
+    // 1. FYSIKALISKT TILLSTÅND & KONSTANTER
+    // =========================================================
+    const TANK_W = 4.0, TANK_H = 2.6, TANK_D = 3.0;
+    const FLUID_REST_H = 1.65;
+
+    const params = {
+      rho: 1000,
+      mu: 0.001,
+      sigma: 72.8,
+      objRho: 750,
+      g: 9.81,
+      viewMode: 'both'
+    };
+
+    // =========================================================
+    // 2. SCEN, KAMERA & RENDERER
+    // =========================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x060911);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(5.8, 4.2, 6.3);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 1.1, 0);
+    controls.maxPolarAngle = Math.PI * 0.49;
+
+    // Ljussättning
+    scene.add(new THREE.AmbientLight(0xdbeafe, 0.8));
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.2);
+    dirLight1.position.set(6, 11, 7);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 1.2);
+    dirLight2.position.set(-6, 5, -5);
+    scene.add(dirLight2);
+
+    // Golvplatta och rutnät
+    const basePlate = new THREE.Mesh(
+      new THREE.BoxGeometry(TANK_W + 0.25, 0.1, TANK_D + 0.25),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.4 })
+    );
+    basePlate.position.y = -0.05;
+    scene.add(basePlate);
+
+    const grid = new THREE.GridHelper(18, 36, 0x1e293b, 0x0f172a);
+    grid.position.y = -0.1;
+    scene.add(grid);
+
+    // =========================================================
+    // 3. GLASTANK & DJUPSKALA (UTAN TRANSMISSION-KONFLIKT)
+    // =========================================================
+    const tankGroup = new THREE.Group();
+    scene.add(tankGroup);
+
+    const tankGeo = new THREE.BoxGeometry(TANK_W, TANK_H, TANK_D);
+    const tankEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(tankGeo),
+      new THREE.LineBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.65 })
+    );
+    tankEdges.position.y = TANK_H / 2;
+    tankGroup.add(tankEdges);
+
+    // Subtil glasyta med depthWrite: false så att den aldrig raderar vätskan inuti
+    const glassWalls = new THREE.Mesh(
+      tankGeo,
+      new THREE.MeshPhysicalMaterial({
+        color: 0xbae6fd,
+        transparent: true,
+        opacity: 0.07,
+        roughness: 0.1,
+        metalness: 0.1,
+        depthWrite: false,
+        side: THREE.BackSide
+      })
+    );
+    glassWalls.position.y = TANK_H / 2;
+    tankGroup.add(glassWalls);
+
+    function makeScaleSprite(txt) {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 48;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#7dd3fc';
+      ctx.font = 'bold 22px ui-monospace, monospace';
+      ctx.fillText(txt, 10, 32);
+      const tex = new THREE.CanvasTexture(c);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+      sp.scale.set(0.42, 0.16, 1);
+      return sp;
+    }
+
+    for (let h = 0.5; h <= 2.5; h += 0.5) {
+      const tickGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-TANK_W / 2, h, TANK_D / 2 + 0.01),
+        new THREE.Vector3(-TANK_W / 2 + 0.14, h, TANK_D / 2 + 0.01)
+      ]);
+      tankGroup.add(new THREE.Line(tickGeo, new THREE.LineBasicMaterial({ color: 0x38bdf8 })));
+      const sp = makeScaleSprite(`${h.toFixed(1)}m`);
+      sp.position.set(-TANK_W / 2 - 0.22, h, TANK_D / 2);
+      tankGroup.add(sp);
+    }
+
+    // =========================================================
+    // 4. CFL-STABIL 2D VÅGLÖSARE & SÖMLÖS 3D-VÄTSKEVOLYM
+    // =========================================================
+    const NX = 40, NZ = 30, NY = 6;
+    const W_IN = TANK_W - 0.04, D_IN = TANK_D - 0.04;
+    const hField = new Float32Array((NX + 1) * (NZ + 1));
+    const vField = new Float32Array((NX + 1) * (NZ + 1));
+    const hNext  = new Float32Array((NX + 1) * (NZ + 1));
+
+    const fluidGeo = new THREE.BoxGeometry(W_IN, FLUID_REST_H, D_IN, NX, NY, NZ);
+    const baseCoords = fluidGeo.attributes.position.array.slice();
+
+    const fluidMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0284c7,
+      transparent: true,
+      opacity: 0.72,
+      roughness: 0.12,
+      metalness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.08,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    const fluidMesh = new THREE.Mesh(fluidGeo, fluidMat);
+    fluidMesh.renderOrder = 2;
+    scene.add(fluidMesh);
+
+    // Trådnät på toppen för tydlig 3D-vågstruktur och exakt Raycasting
+    const topGridGeo = new THREE.PlaneGeometry(W_IN, D_IN, NX, NZ);
+    topGridGeo.rotateX(-Math.PI / 2);
+    const topGridMat = new THREE.MeshBasicMaterial({
+      color: 0x7dd3fc,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.18
+    });
+    const topGridMesh = new THREE.Mesh(topGridGeo, topGridMat);
+    topGridMesh.renderOrder = 3;
+    scene.add(topGridMesh);
+
+    function gIdx(ix, iz) { return iz * (NX + 1) + ix; }
+
+    function getSurfaceY(x, z) {
+      const fx = Math.min(NX, Math.max(0, Math.round(((x / W_IN) + 0.5) * NX)));
+      const fz = Math.min(NZ, Math.max(0, Math.round(((z / D_IN) + 0.5) * NZ)));
+      const hVal = hField[gIdx(fx, fz)] || 0;
+      const dWall = Math.min(W_IN / 2 - Math.abs(x), D_IN / 2 - Math.abs(z));
+      const meniscus = dWall < 0.25 ? (params.sigma / 500) * 0.11 * Math.pow(1 - dWall / 0.25, 2) : 0;
+      return FLUID_REST_H + hVal + meniscus;
+    }
+
+    function addWaveImpulse(wx, wz, radius = 0.65, velImpulse = -0.9) {
+      for (let iz = 1; iz < NZ; iz++) {
+        const z = (iz / NZ - 0.5) * D_IN;
+        for (let ix = 1; ix < NX; ix++) {
+          const x = (ix / NX - 0.5) * W_IN;
+          const dist = Math.hypot(x - wx, z - wz);
+          if (dist < radius) {
+            const w = Math.cos((dist / radius) * (Math.PI * 0.5));
+            const i = gIdx(ix, iz);
+            vField[i] = Math.max(-3.5, Math.min(3.5, vField[i] + velImpulse * w));
+          }
+        }
+      }
+    }
+
+    // =========================================================
+    // 5. SPH-PARTIKLAR INUTI VÄTSKAN
+    // =========================================================
+    const NUM_SPH = 420;
+    const sphPos = new Float32Array(NUM_SPH * 3);
+    const sphVel = new Float32Array(NUM_SPH * 3);
+
+    for (let i = 0; i < NUM_SPH; i++) {
+      sphPos[i * 3]     = (Math.random() - 0.5) * (W_IN - 0.35);
+      sphPos[i * 3 + 1] = 0.14 + Math.random() * (FLUID_REST_H - 0.28);
+      sphPos[i * 3 + 2] = (Math.random() - 0.5) * (D_IN - 0.35);
+    }
+
+    const sphGeo = new THREE.SphereGeometry(0.048, 12, 12);
+    const sphMat = new THREE.MeshStandardMaterial({ roughness: 0.2, metalness: 0.15 });
+    const sphInstanced = new THREE.InstancedMesh(sphGeo, sphMat, NUM_SPH);
+    sphInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    sphInstanced.renderOrder = 1;
+    scene.add(sphInstanced);
+
+    const dummy = new THREE.Object3D();
+    const pCol = new THREE.Color();
+
+    function stepWavesAndSPH(dt) {
+      // --- 1. SUB-STEPPED CFL-SÄKER 2D VÅGLÖSARE ---
+      const SUBSTEPS = 4;
+      const subDt = dt / SUBSTEPS;
+      // Strikt begränsad vågkoefficient så att Courant-talet aldrig överstiger stabilitetsgränsen
+      const waveStiffness = 14.0 + (params.sigma / 500) * 10.0;
+      const restoringForce = 3.2;
+      const damping = 0.25 + Math.pow(params.mu, 0.4) * 2.6;
+      const dampFactor = Math.exp(-damping * subDt);
+
+      for (let s = 0; s < SUBSTEPS; s++) {
+        for (let iz = 1; iz < NZ; iz++) {
+          for (let ix = 1; ix < NX; ix++) {
+            const i = gIdx(ix, iz);
+            const lap = (
+              hField[gIdx(ix + 1, iz)] + hField[gIdx(ix - 1, iz)] +
+              hField[gIdx(ix, iz + 1)] + hField[gIdx(ix, iz - 1)] - 4 * hField[i]
+            );
+            const acc = waveStiffness * lap - restoringForce * hField[i];
+            let vn = (vField[i] + acc * subDt) * dampFactor;
+            // Säkerhetsklampning
+            if (!Number.isFinite(vn)) vn = 0;
+            vField[i] = Math.max(-4.0, Math.min(4.0, vn));
+          }
+        }
+
+        for (let iz = 1; iz < NZ; iz++) {
+          for (let ix = 1; ix < NX; ix++) {
+            const i = gIdx(ix, iz);
+            let hn = hField[i] + vField[i] * subDt;
+            if (!Number.isFinite(hn)) hn = 0;
+            // Mjuk fysisk begränsning av vågamplitud till +-0.45 m
+            hNext[i] = 0.45 * Math.tanh(hn / 0.45);
+          }
+        }
+
+        for (let iz = 1; iz < NZ; iz++) {
+          for (let ix = 1; ix < NX; ix++) {
+            hField[gIdx(ix, iz)] = hNext[gIdx(ix, iz)];
+          }
+        }
+
+        // Neumann-randvillkor (reflekterande glasväggar)
+        for (let ix = 0; ix <= NX; ix++) {
+          hField[gIdx(ix, 0)]  = hField[gIdx(ix, 1)];
+          hField[gIdx(ix, NZ)] = hField[gIdx(ix, NZ - 1)];
+        }
+        for (let iz = 0; iz <= NZ; iz++) {
+          hField[gIdx(0, iz)]  = hField[gIdx(1, iz)];
+          hField[gIdx(NX, iz)] = hField[gIdx(NX - 1, iz)];
+        }
+      }
+
+      // Uppdatera den sammanhängande 3D-vätskevolymen
+      const fPos = fluidGeo.attributes.position;
+      for (let i = 0; i < fPos.count; i++) {
+        const bx = baseCoords[i * 3];
+        const by = baseCoords[i * 3 + 1];
+        const bz = baseCoords[i * 3 + 2];
+        const yFrac = (by + FLUID_REST_H / 2) / FLUID_REST_H; // 0 på botten, 1 på toppen
+        const topY = getSurfaceY(bx, bz);
+        fPos.setY(i, yFrac * topY);
+      }
+      fPos.needsUpdate = true;
+      fluidGeo.computeVertexNormals();
+
+      // Uppdatera trådmodellen på ytan
+      const gPos = topGridGeo.attributes.position;
+      for (let i = 0; i < gPos.count; i++) {
+        const gx = gPos.getX(i);
+        const gz = gPos.getZ(i);
+        gPos.setY(i, getSurfaceY(gx, gz) + 0.003);
+      }
+      gPos.needsUpdate = true;
+
+      // --- 2. SPH-PARTIKLAR MED KÄRNREPULSION & VÅGADVEKTION ---
+      const hRad = 0.34, hRad2 = hRad * hRad;
+      const viscDamp = Math.exp(-(0.18 + Math.pow(params.mu, 0.35) * 1.5) * dt);
+
+      for (let i = 0; i < NUM_SPH; i++) {
+        let px = sphPos[i * 3], py = sphPos[i * 3 + 1], pz = sphPos[i * 3 + 2];
+        let vx = sphVel[i * 3], vy = sphVel[i * 3 + 1], vz = sphVel[i * 3 + 2];
+
+        let fx = 0, fy = -0.2, fz = 0;
+
+        for (let j = 0; j < NUM_SPH; j++) {
+          if (i === j) continue;
+          const dx = px - sphPos[j * 3], dy = py - sphPos[j * 3 + 1], dz = pz - sphPos[j * 3 + 2];
+          const r2 = dx * dx + dy * dy + dz * dz;
+          if (r2 > 0.0001 && r2 < hRad2) {
+            const r = Math.sqrt(r2);
+            const q = 1.0 - r / hRad;
+            const rep = 2.0 * q * q / r;
+            fx += dx * rep;
+            fy += dy * rep;
+            fz += dz * rep;
+          }
+        }
+
+        // Orbital vågkoppling
+        const ix = Math.min(NX - 1, Math.max(1, Math.round(((px / W_IN) + 0.5) * NX)));
+        const iz = Math.min(NZ - 1, Math.max(1, Math.round(((pz / D_IN) + 0.5) * NZ)));
+        const dhx = (hField[gIdx(ix + 1, iz)] - hField[gIdx(ix - 1, iz)]) * 4.0;
+        const dhz = (hField[gIdx(ix, iz + 1)] - hField[gIdx(ix, iz - 1)]) * 4.0;
+        const depthRatio = py / FLUID_REST_H;
+
+        fx -= dhx * depthRatio * 5.0;
+        fz -= dhz * depthRatio * 5.0;
+        fy += vField[gIdx(ix, iz)] * depthRatio * 1.5;
+
+        // Sfär-undanträngning
+        const sdx = px - sphere.pos.x, sdy = py - sphere.pos.y, sdz = pz - sphere.pos.z;
+        const sDist = Math.hypot(sdx, sdy, sdz);
+        const minSep = sphere.R + 0.08;
+        if (sDist < minSep && sDist > 0.001) {
+          const push = (minSep - sDist) * 20.0;
+          fx += (sdx / sDist) * push;
+          fy += (sdy / sDist) * push;
+          fz += (sdz / sDist) * push;
+        }
+
+        vx = Math.max(-3.0, Math.min(3.0, (vx + fx * dt) * viscDamp));
+        vy = Math.max(-3.0, Math.min(3.0, (vy + fy * dt) * viscDamp));
+        vz = Math.max(-3.0, Math.min(3.0, (vz + fz * dt) * viscDamp));
+
+        px += vx * dt;
+        py += vy * dt;
+        pz += vz * dt;
+
+        const maxY = getSurfaceY(px, pz) - 0.06;
+        const limX = W_IN / 2 - 0.08, limZ = D_IN / 2 - 0.08;
+
+        if (px < -limX) { px = -limX; vx *= -0.5; }
+        if (px >  limX) { px =  limX; vx *= -0.5; }
+        if (pz < -limZ) { pz = -limZ; vz *= -0.5; }
+        if (pz >  limZ) { pz =  limZ; vz *= -0.5; }
+        if (py < 0.07)  { py = 0.07;  vy *= -0.4; }
+        if (py > maxY)  { py = maxY;  vy *= -0.3; }
+
+        sphPos[i * 3] = px; sphPos[i * 3 + 1] = py; sphPos[i * 3 + 2] = pz;
+        sphVel[i * 3] = vx; sphVel[i * 3 + 1] = vy; sphVel[i * 3 + 2] = vz;
+
+        dummy.position.set(px, py, pz);
+        dummy.updateMatrix();
+        sphInstanced.setMatrixAt(i, dummy.matrix);
+
+        const spd = Math.hypot(vx, vy, vz);
+        const t = Math.min(1.0, spd / 2.0);
+        pCol.setHSL(0.58 - t * 0.48, 0.92, 0.46 + t * 0.38);
+        sphInstanced.setColorAt(i, pCol);
+      }
+
+      sphInstanced.instanceMatrix.needsUpdate = true;
+      if (sphInstanced.instanceColor) sphInstanced.instanceColor.needsUpdate = true;
+    }
+
+    // =========================================================
+    // 6. ARKIMEDISK FLYTKRAFT & 3D-KRAFTVEKTORER
+    // =========================================================
+    const sphere = {
+      R: 0.34,
+      pos: new THREE.Vector3(0, 1.72, 0),
+      vel: new THREE.Vector3(0, 0, 0),
+      subFrac: 0.75,
+      fBuoy: 1210,
+      fWeight: 1210,
+      fDrag: 0
+    };
+
+    const sphereMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(sphere.R, 36, 36),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.22, metalness: 0.45 })
+    );
+    sphereMesh.renderOrder = 1;
+    scene.add(sphereMesh);
+
+    const arrowB = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), sphere.pos, 1, 0x22c55e, 0.18, 0.11);
+    const arrowW = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), sphere.pos, 1, 0xef4444, 0.18, 0.11);
+    const arrowD = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), sphere.pos, 0.5, 0xa855f7, 0.15, 0.09);
+    scene.add(arrowB, arrowW, arrowD);
+
+    function stepSphere(dt) {
+      const R = sphere.R;
+      const totalVol = (4 / 3) * Math.PI * Math.pow(R, 3);
+      const mass = params.objRho * totalVol;
+
+      const localSurfY = getSurfaceY(sphere.pos.x, sphere.pos.z);
+      const hSub = Math.max(0, Math.min(2 * R, localSurfY - (sphere.pos.y - R)));
+
+      // Exakt sfäriskt segment
+      const subVol = (Math.PI * hSub * hSub / 3) * (3 * R - hSub);
+      sphere.subFrac = Math.max(0, Math.min(1, subVol / totalVol));
+
+      const fW = -mass * params.g;
+      const fB = params.rho * subVol * params.g;
+
+      const vy = sphere.vel.y;
+      const fStokes = -6 * Math.PI * (params.mu + 0.05) * R * vy * sphere.subFrac;
+      const fQuad = -0.5 * params.rho * 0.47 * Math.PI * R * R * Math.abs(vy) * vy * sphere.subFrac;
+      const fD = fStokes + fQuad;
+
+      const ay = (fW + fB + fD) / mass;
+      sphere.vel.y = Math.max(-5.0, Math.min(5.0, sphere.vel.y + ay * dt));
+      sphere.pos.y += sphere.vel.y * dt;
+
+      if (Math.abs(sphere.vel.y) > 0.3 && sphere.subFrac > 0.05 && sphere.subFrac < 0.95) {
+        addWaveImpulse(sphere.pos.x, sphere.pos.z, 0.55, -sphere.vel.y * 0.12);
+      }
+
+      if (sphere.pos.y < R + 0.02) {
+        sphere.pos.y = R + 0.02;
+        sphere.vel.y *= -0.25;
+      }
+      if (sphere.pos.y > 2.8) {
+        sphere.pos.y = 2.8;
+        sphere.vel.y = 0;
+      }
+
+      sphereMesh.position.copy(sphere.pos);
+      sphere.fBuoy = fB;
+      sphere.fWeight = Math.abs(fW);
+      sphere.fDrag = fD;
+
+      const vScale = 0.00045;
+      arrowB.position.copy(sphere.pos);
+      arrowB.setLength(Math.max(0.22, Math.min(1.5, fB * vScale)), 0.18, 0.11);
+
+      arrowW.position.copy(sphere.pos);
+      arrowW.setLength(Math.max(0.22, Math.min(1.5, Math.abs(fW) * vScale)), 0.18, 0.11);
+
+      arrowD.position.copy(sphere.pos);
+      const dMag = Math.abs(fD);
+      arrowD.visible = dMag > 4.0;
+      if (dMag > 4.0) {
+        arrowD.setDirection(new THREE.Vector3(0, fD >= 0 ? 1 : -1, 0));
+        arrowD.setLength(Math.max(0.18, Math.min(1.2, dMag * vScale * 2.5)), 0.14, 0.09);
+      }
+    }
+
+    // =========================================================
+    // 7. 3D-MARKÖR & KLICK-VÅGOR (UTAN KAMERARYCK)
+    // =========================================================
+    const cursorRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.12, 0.17, 32),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide })
+    );
+    cursorRing.rotation.x = -Math.PI / 2;
+    cursorRing.visible = false;
+    cursorRing.renderOrder = 4;
+    scene.add(cursorRing);
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let clickStart = { x: 0, y: 0 };
+
+    container.addEventListener('pointermove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObject(topGridMesh);
+      if (hits.length > 0) {
+        const p = hits[0].point;
+        cursorRing.position.set(p.x, getSurfaceY(p.x, p.z) + 0.015, p.z);
+        cursorRing.visible = true;
+      } else {
+        cursorRing.visible = false;
+      }
+    });
+
+    container.addEventListener('pointerdown', (e) => {
+      clickStart.x = e.clientX;
+      clickStart.y = e.clientY;
+    });
+
+    container.addEventListener('pointerup', (e) => {
+      const dist = Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y);
+      if (dist < 5 && e.button === 0) {
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObject(topGridMesh);
+        if (hits.length > 0) {
+          const p = hits[0].point;
+          addWaveImpulse(p.x, p.z, 0.7, -1.6);
+        }
+      }
+    });
+
+    // =========================================================
+    // 8. UI, PRESETS & OSCILLOSKOP
+    // =========================================================
+    const PRESETS = {
+      water:    { rho: 1000,  muLog: -3.0,  sigma: 72.8,  col: 0x0284c7, op: 0.72, metal: 0.08 },
+      glycerol: { rho: 1260,  muLog: 0.15,  sigma: 63.4,  col: 0x38bdf8, op: 0.76, metal: 0.12 },
+      honey:    { rho: 1420,  muLog: 1.0,   sigma: 55.0,  col: 0xd97706, op: 0.84, metal: 0.15 },
+      mercury:  { rho: 13534, muLog: -2.82, sigma: 486.5, col: 0xcbd5e1, op: 0.94, metal: 0.90 }
+    };
+
+    window.applyPreset = (key) => {
+      const p = PRESETS[key];
+      ['water', 'glycerol', 'honey', 'mercury'].forEach(k => {
+        document.getElementById('preset-' + k).classList.toggle('active', k === key);
+      });
+      document.getElementById('inp-rho').value = p.rho;
+      document.getElementById('inp-mu').value = p.muLog;
+      document.getElementById('inp-sigma').value = p.sigma;
+
+      fluidMat.color.setHex(p.col);
+      fluidMat.opacity = p.op;
+      fluidMat.metalness = p.metal;
+      syncControls();
+    };
+
+    window.setViewMode = (mode) => {
+      params.viewMode = mode;
+      ['both', 'sph', 'surface'].forEach(m => {
+        document.getElementById('view-' + m).classList.toggle('active', m === mode);
+      });
+      fluidMesh.visible = (mode === 'both' || mode === 'surface');
+      topGridMesh.visible = (mode === 'both' || mode === 'surface');
+      sphInstanced.visible = (mode === 'both' || mode === 'sph');
+    };
+
+    window.triggerDamBreak = () => {
+      for (let iz = 1; iz < NZ; iz++) {
+        for (let ix = 1; ix < NX; ix++) {
+          const xNorm = ix / NX - 0.5;
+          const i = gIdx(ix, iz);
+          vField[i] = Math.max(-3.5, Math.min(3.5, vField[i] + xNorm * 3.8));
+        }
+      }
+      for (let i = 0; i < NUM_SPH; i++) {
+        sphVel[i * 3] += 1.6;
+      }
+    };
+
+    window.dropTestSphere = () => {
+      sphere.pos.set(0, 2.45, 0);
+      sphere.vel.set(0, -1.2, 0);
+    };
+
+    function syncControls() {
+      params.rho = parseFloat(document.getElementById('inp-rho').value);
+      params.mu = Math.pow(10, parseFloat(document.getElementById('inp-mu').value));
+      params.sigma = parseFloat(document.getElementById('inp-sigma').value);
+      params.objRho = parseFloat(document.getElementById('inp-obj-rho').value);
+
+      document.getElementById('lbl-rho').textContent = `${params.rho.toFixed(0)} kg/m³`;
+      document.getElementById('lbl-mu').textContent = `${params.mu < 0.05 ? params.mu.toFixed(4) : params.mu.toFixed(2)} Pa·s`;
+      document.getElementById('lbl-sigma').textContent = `${params.sigma.toFixed(1)} mN/m`;
+      document.getElementById('lbl-obj-rho').textContent = `${params.objRho.toFixed(0)} kg/m³`;
+    }
+
+    ['inp-rho', 'inp-mu', 'inp-sigma', 'inp-obj-rho'].forEach(id => {
+      document.getElementById(id).addEventListener('input', syncControls);
+    });
+    syncControls();
+
+    const scopeCanvas = document.getElementById('scope-canvas');
+    const sCtx = scopeCanvas.getContext('2d');
+    const histSphere = new Array(120).fill(FLUID_REST_H);
+    const histWave = new Array(120).fill(FLUID_REST_H);
+
+    function drawOscilloscope() {
+      histSphere.push(sphere.pos.y);
+      histSphere.shift();
+      histWave.push(getSurfaceY(0, 0));
+      histWave.shift();
+
+      sCtx.clearRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+
+      sCtx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+      sCtx.beginPath();
+      sCtx.moveTo(0, 38); sCtx.lineTo(scopeCanvas.width, 38);
+      sCtx.stroke();
+
+      sCtx.strokeStyle = '#38bdf8';
+      sCtx.lineWidth = 1.5;
+      sCtx.beginPath();
+      for (let i = 0; i < histWave.length; i++) {
+        const x = (i / (histWave.length - 1)) * scopeCanvas.width;
+        const y = 76 - ((histWave[i] / 2.6) * 70);
+        i === 0 ? sCtx.moveTo(x, y) : sCtx.lineTo(x, y);
+      }
+      sCtx.stroke();
+
+      sCtx.strokeStyle = '#f59e0b';
+      sCtx.lineWidth = 2.0;
+      sCtx.beginPath();
+      for (let i = 0; i < histSphere.length; i++) {
+        const x = (i / (histSphere.length - 1)) * scopeCanvas.width;
+        const y = 76 - ((histSphere[i] / 2.6) * 70);
+        i === 0 ? sCtx.moveTo(x, y) : sCtx.lineTo(x, y);
+      }
+      sCtx.stroke();
+    }
+
+    function updateTelemetry() {
+      const re = (params.rho * 0.5 * 0.5) / params.mu;
+      const pBot = (params.rho * params.g * FLUID_REST_H) / 1000;
+      const lc = Math.sqrt((params.sigma * 0.001) / (params.rho * params.g)) * 1000;
+      const nu = (params.mu / params.rho) * 1e6;
+
+      document.getElementById('tel-re').textContent = re >= 1000 ? Math.round(re).toLocaleString('sv-SE') : re.toFixed(1);
+      document.getElementById('tel-regime').textContent = re > 2000 ? 'Inertiellt / Svagt dämpat' : (re > 10 ? 'Laminärt övergångsflöde' : 'Krypströmning (Stokes)');
+      document.getElementById('tel-pressure').textContent = `${pBot.toFixed(1)} kPa`;
+      document.getElementById('tel-sub').textContent = `${(sphere.subFrac * 100).toFixed(1)} %`;
+      document.getElementById('tel-forces').textContent = `F_B: ${(sphere.fBuoy / 1000).toFixed(2)} kN | W: ${(sphere.fWeight / 1000).toFixed(2)} kN`;
+      document.getElementById('tel-lc').textContent = `${lc.toFixed(2)} mm`;
+      document.getElementById('tel-nu').textContent = nu < 100 ? `${nu.toFixed(2)} mm²/s` : `${(nu / 1000).toFixed(2)} cm²/s`;
+    }
+
+    // Mjuk initial våg vid start
+    addWaveImpulse(-0.6, 0.2, 0.75, -1.1);
+
+    // =========================================================
+    // 9. HUVUDLOOP
+    // =========================================================
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.02);
+
+      stepWavesAndSPH(dt);
+      stepSphere(dt);
+      drawOscilloscope();
+      updateTelemetry();
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
